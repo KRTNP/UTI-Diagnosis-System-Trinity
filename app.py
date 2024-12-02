@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 import joblib
@@ -23,7 +24,7 @@ class UTIPredictionModel:
                 'thresholds': joblib.load(f'{model_path}/optimal_thresholds.joblib')
             }
         except Exception as e:
-            print(f"Error loading models: {str(e)}")
+            st.error(f"Error loading models: {str(e)}")
             return None
     
     def _validate_input(self, patient_data: Dict[str, Union[int, float, str]]) -> bool:
@@ -53,7 +54,7 @@ class UTIPredictionModel:
         missing_features = [feat for feat in required_features if feat not in patient_data]
         
         if missing_features:
-            print(f"Missing features: {missing_features}")
+            st.warning(f"Missing features: {missing_features}")
             return False
         
         return True
@@ -131,92 +132,143 @@ class UTIPredictionModel:
             else:
                 return "UTI unlikely, but consult healthcare provider if symptoms persist."
 
-def input_patient_data(mode='basic'):
-    """
-    Collect patient data with different input depths
+def main():
+    # Set page configuration
+    st.set_page_config(page_title="UTI Risk Prediction", page_icon="🩺", layout="wide")
     
-    Args:
-        mode (str): 'basic' or 'detailed' input mode
+    # Title and description
+    st.title("Urinary Tract Infection (UTI) Risk Prediction")
+    st.markdown("""
+    ### Disclaimer
+    This is a predictive tool and should not replace professional medical advice.
+    Always consult with a healthcare provider for accurate diagnosis and treatment.
+    """)
     
-    Returns:
-        dict: Patient data dictionary
-    """
-    patient_data = {}
+    # Sidebar for input mode selection
+    st.sidebar.header("Assessment Mode")
+    input_mode = st.sidebar.radio("Select Input Depth", 
+                                   ["Basic Symptom Assessment", 
+                                    "Detailed Medical Evaluation"])
     
-    # Basic symptom questions
+    # Initialize the UTI prediction model
+    uti_model = UTIPredictionModel()
+    
+    # Patient data input
+    st.header("Patient Information")
+    
+    # Create columns for input layout
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Core patient details
+        age = st.number_input("Patient's Age", min_value=0, max_value=120, value=30)
+        gender = st.selectbox("Gender", ["M", "F"])
+    
+    # Symptom inputs
+    st.subheader("Symptoms")
+    
+    # Basic symptoms (always shown)
     basic_symptoms = [
         'frequent_urination', 'painful_urination', 'fever', 
         'urgent_urination', 'cloudy_urine'
     ]
     
-    # Detailed additional symptoms and tests
+    # Detailed additional symptoms
     detailed_symptoms = [
         'lower_abdominal_pain', 'blood_in_urine', 
         'foul_smelling_urine', 'nitrites', 'leukocyte_esterase'
     ]
     
-    # Core questions for both modes
-    patient_data['age'] = int(input("Patient's age: "))
-    patient_data['gender'] = input("Gender (M/F): ").upper()
+    # Create columns for symptoms
+    col3, col4 = st.columns(2)
     
-    # Basic mode: core symptoms
-    if mode == 'basic':
+    # Symptom input
+    patient_data = {
+        'age': age,
+        'gender': gender
+    }
+    
+    with col3:
         for symptom in basic_symptoms:
-            patient_data[symptom] = int(input(f"{symptom.replace('_', ' ').title()} (0/1): "))
-        
-        # Set default/neutral values for other features
+            patient_data[symptom] = st.radio(
+                symptom.replace('_', ' ').title(), 
+                [0, 1], 
+                format_func=lambda x: "Yes" if x == 1 else "No"
+            )
+    
+    # Detailed mode additional inputs
+    if input_mode == "Detailed Medical Evaluation":
+        with col4:
+            for symptom in detailed_symptoms:
+                patient_data[symptom] = st.radio(
+                    symptom.replace('_', ' ').title(), 
+                    [0, 1], 
+                    format_func=lambda x: "Yes" if x == 1 else "No"
+                )
+            
+            # Additional medical details
+            patient_data['urine_ph'] = st.number_input("Urine pH Level", min_value=0.0, max_value=14.0, value=6.0, step=0.1)
+            patient_data['wbc'] = st.number_input("White Blood Cell Count", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
+            patient_data['rbc'] = st.number_input("Red Blood Cell Count", min_value=0.0, max_value=100.0, value=5.0, step=0.1)
+            
+            # Chronic conditions
+            patient_data['diabetes'] = st.radio("Diabetes", [0, 1], format_func=lambda x: "Yes" if x == 1 else "No")
+            patient_data['hypertension'] = st.radio("Hypertension", [0, 1], format_func=lambda x: "Yes" if x == 1 else "No")
+            patient_data['bacteria'] = st.radio("Bacteria Present", [0, 1], format_func=lambda x: "Yes" if x == 1 else "No")
+    else:
+        # Set default/neutral values for detailed features in basic mode
         default_features = (detailed_symptoms + 
                             ['wbc', 'rbc', 'urine_ph', 
                              'diabetes', 'hypertension', 'bacteria'])
         for feature in default_features:
             patient_data[feature] = 0
     
-    # Detailed mode: comprehensive assessment
-    else:
-        # All symptoms
-        for symptom in (basic_symptoms + detailed_symptoms):
-            patient_data[symptom] = int(input(f"{symptom.replace('_', ' ').title()} (0/1): "))
+    # Prediction button
+    if st.button("Predict UTI Risk"):
+        try:
+            # Predict UTI risk
+            result = uti_model.predict(patient_data)
+            
+            # Display results
+            st.header("Risk Assessment Results")
+            
+            # Prediction visualization
+            if result['prediction'] == 1:
+                st.error("UTI Risk: Positive")
+                risk_color = "red"
+            else:
+                st.success("UTI Risk: Negative")
+                risk_color = "green"
+            
+            # Detailed results
+            col5, col6, col7 = st.columns(3)
+            
+            with col5:
+                st.metric("Probability", f"{result['probability']:.2f}", 
+                          help="Likelihood of having a UTI")
+            
+            with col6:
+                st.metric("Confidence", f"{result['confidence']:.2f}", 
+                          help="Model's confidence in the prediction")
+            
+            with col7:
+                st.markdown(f"""
+                <div style="background-color:{risk_color}; color:white; padding:10px; border-radius:5px;">
+                <strong>Recommendation:</strong><br>
+                {result['recommendation']}
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Additional information
+            st.info("""
+            ### Important Notes:
+            - This is a predictive tool, not a definitive diagnosis
+            - Always consult a healthcare professional
+            - Your personal medical history is crucial for accurate assessment
+            """)
         
-        # Additional medical details
-        patient_data['urine_ph'] = float(input("Urine pH level: "))
-        patient_data['wbc'] = float(input("White Blood Cell count: "))
-        patient_data['rbc'] = float(input("Red Blood Cell count: "))
-        
-        # Chronic conditions
-        patient_data['diabetes'] = int(input("Diabetes (0/1): "))
-        patient_data['hypertension'] = int(input("Hypertension (0/1): "))
-        patient_data['bacteria'] = int(input("Bacteria present (0/1): "))
-    
-    return patient_data
-
-def main():
-    # Initialize the UTI prediction model
-    uti_model = UTIPredictionModel()
-    
-    # Choose input mode
-    print("Select Input Mode:")
-    print("1. Basic Symptom Assessment")
-    print("2. Detailed Medical Evaluation")
-    
-    mode_choice = input("Enter choice (1/2): ")
-    input_mode = 'basic' if mode_choice == '1' else 'detailed'
-    
-    # Collect patient data
-    try:
-        patient_data = input_patient_data(input_mode)
-        
-        # Predict UTI risk
-        result = uti_model.predict(patient_data)
-        
-        # Display results
-        print("\n--- UTI Risk Assessment ---")
-        print(f"Prediction: {'Positive' if result['prediction'] == 1 else 'Negative'}")
-        print(f"Probability: {result['probability']:.2f}")
-        print(f"Confidence: {result['confidence']:.2f}")
-        print(f"Recommendation: {result['recommendation']}")
-    
-    except Exception as e:
-        print(f"An error occurred: {e}")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     main()
