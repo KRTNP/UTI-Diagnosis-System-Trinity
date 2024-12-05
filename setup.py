@@ -8,7 +8,7 @@ setup(
     description='An AI-based system for preliminary UTI diagnosis.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    url='https://github.com/KRTNP/UTI-Prediction-Trinity',
+    url='https://github.com/KRTNP/UTI-Diagnosis-System-Trinity',
     packages=find_packages(),
     install_requires=[
         'numpy',
